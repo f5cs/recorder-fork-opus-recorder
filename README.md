@@ -1,7 +1,96 @@
-# Opus & Wave Recorder
+# Change point from Opus & Wave Recorder
 
-A javascript library to encode the output of Web Audio API nodes in Ogg Opus or WAV format using WebAssembly.
+in encoder.js:
+Recorder.prototype.initAudioContext = function( sourceNode ){
+    if (sourceNode && sourceNode.context) {
+        this.audioContext = sourceNode.context;
+- **    if(!this.analyser){this.analyser = this.audioContext.createAnalyser();}
+        this.closeAudioContext = false;
+    }
 
+    else {
+        this.audioContext = new AudioContext();
+- **    this.analyser = this.audioContext.createAnalyser();
+        this.closeAudioContext = true;
+    }
+
+    return this.audioContext;
+};
+
+
+in encoderWorker.js:
+
+importScripts('encoderWorkerBase64.js');
+function _base64ToArrayBuffer(base64) {
+    var binary_string =  atob(base64);
+    var len = binary_string.length;
+    var bytes = new Uint8Array( len );
+    for (var i = 0; i < len; i++)        {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+var wasmArrayBuffData = _base64ToArrayBuffer(wasmBase64);
+......
+......
+......
+function doNativeWasm(global, env, providedBuffer) {
+if (typeof WebAssembly !== 'object') {
+  err('no native wasm support detected');
+  return false;
+}
+// prepare memory import
+if (!(Module['wasmMemory'] instanceof WebAssembly.Memory)) {
+  err('no native wasm Memory in use');
+  return false;
+}
+env['memory'] = Module['wasmMemory'];
+// Load the wasm module and create an instance of using native support in the JS engine.
+info['global'] = {
+  'NaN': NaN,
+  'Infinity': Infinity
+};
+info['global.Math'] = Math;
+info['env'] = env;
+// handle a generated wasm instance, receiving its exports and
+// performing other necessary setup
+function receiveInstance(instance, module) {
+  exports = instance.exports;
+  if (exports.memory) mergeMemory(exports.memory);
+  Module['asm'] = exports;
+  Module["usingWasm"] = true;
+  removeRunDependency('wasm-instantiate');
+}
+addRunDependency('wasm-instantiate');
+
+// User shell pages can write their own Module.instantiateWasm = function(imports, successCallback) callback
+// to manually instantiate the Wasm module themselves. This allows pages to run the instantiation parallel
+// to any other async startup actions they are performing.
+if (Module['instantiateWasm']) {
+  try {
+	return Module['instantiateWasm'](info, receiveInstance);
+  } catch(e) {
+	err('Module.instantiateWasm callback failed with error: ' + e);
+	return false;
+  }
+}
+
+function receiveInstantiatedSource(output) {
+  // 'output' is a WebAssemblyInstantiatedSource object which has both the module and instance.
+  // receiveInstance() will swap in the exports (to Module.asm) so they can be called
+  receiveInstance(output['instance'], output['module']);
+}
+
+WebAssembly.instantiate(wasmArrayBuffData,info).then(
+	receiveInstantiatedSource,
+	function(reason) {
+		console.error('failed to asynchronously prepare wasm: ' + reason);
+		abort(reason);
+	}
+);
+
+return {}; // no exports yet; we'll fill them in later
+}
 
 #### Libraries Used
 
